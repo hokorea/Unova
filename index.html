@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Unova — Flight Prototype</title>
+<style>
+*{box-sizing:border-box}body{margin:0;overflow:hidden;background:#91d5fa;font-family:system-ui,sans-serif}
+#hud{position:fixed;top:14px;left:14px;color:white;text-shadow:0 2px 5px #234;font-weight:700;pointer-events:none}
+#pad{position:fixed;bottom:22px;left:22px;width:130px;height:130px;border:2px solid #ffffff88;border-radius:50%;background:#ffffff22;touch-action:none}
+#knob{position:absolute;width:48px;height:48px;border-radius:50%;background:#ffffffaa;left:39px;top:39px}
+#buttons{position:fixed;bottom:24px;right:20px;display:grid;gap:10px}
+button{border:0;border-radius:16px;padding:16px;background:#ffffffcc;font-weight:bold;font-size:17px;touch-action:none}
+</style>
+</head>
+<body>
+<div id="hud">Unova · 3D Flight Prototype<br><small>WASD / 방향키 이동 · Q/E 고도 · 모바일 조이스틱</small></div>
+<div id="pad"><div id="knob"></div></div>
+<div id="buttons"><button id="up">상승 ▲</button><button id="down">하강 ▼</button></div>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x91d5fa);
+scene.fog = new THREE.Fog(0x91d5fa, 150, 550);
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 900);
+const renderer = new THREE.WebGLRenderer({antialias: true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x669966, 2));
+const sun = new THREE.DirectionalLight(0xfff5d7, 2.2);
+sun.position.set(80, 140, 70);
+scene.add(sun);
+
+const mat = color => new THREE.MeshLambertMaterial({color});
+function box(w,h,d,x,y,z,material) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material);
+  mesh.position.set(x,y,z);
+  scene.add(mesh);
+  return mesh;
+}
+box(700,2,700,0,-2,0,mat(0x78b96b));
+box(700,.25,110,0,-.8,-165,mat(0x4caad5));
+box(28,.15,310,0,-.75,10,mat(0xd8c39b));
+box(310,.15,25,0,-.7,10,mat(0xd8c39b));
+
+const colors=[0xe8d7ad,0xf2e7cd,0x9dc7d2,0xc2b2d7,0xf1b5a5];
+for(let x=-135;x<=135;x+=32) for(let z=-125;z<=145;z+=32) {
+  if(Math.abs(x)<21 || Math.abs(z-10)<18 || Math.random()<.16) continue;
+  const h=10+Math.random()*34;
+  box(18,h,18,x,h/2,z,mat(colors[Math.floor(Math.random()*colors.length)]));
+  box(20,2,20,x,h+1,z,mat(0x657b8d));
+}
+for(let i=0;i<160;i++){
+  const x=(Math.random()-.5)*600,z=(Math.random()-.5)*600;
+  if(Math.abs(x)<170 && Math.abs(z)<170) continue;
+  box(2,6,2,x,3,z,mat(0x886444));
+  const crown=new THREE.Mesh(new THREE.ConeGeometry(6,15,7),mat(0x328d58));
+  crown.position.set(x,14,z);
+  scene.add(crown);
+}
+
+const flyer=new THREE.Group();
+const fuselage=new THREE.Mesh(new THREE.ConeGeometry(3,13,4),mat(0xf6f5e8));
+fuselage.rotation.x=Math.PI/2;
+flyer.add(fuselage);
+for(const side of [-1,1]){
+  const wing=new THREE.Mesh(new THREE.BoxGeometry(15,.6,5),mat(0xe9e9f0));
+  wing.position.set(side*9,0,1);
+  wing.rotation.z=side*.15;
+  flyer.add(wing);
+}
+flyer.position.set(0,55,90);
+scene.add(flyer);
+
+const keys={};
+addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.key.startsWith('Arrow'))e.preventDefault()});
+addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+addEventListener('blur',()=>{for(const key of Object.keys(keys))keys[key]=false;vertical=0;reset()});
+let joy={x:0,y:0},vertical=0;
+const pad=document.getElementById('pad'),knob=document.getElementById('knob');
+function move(e){
+  const r=pad.getBoundingClientRect();
+  const dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2);
+  const len=Math.max(1,Math.hypot(dx,dy)),scale=Math.min(len,50)/len;
+  joy={x:dx*scale/50,y:dy*scale/50};
+  knob.style.transform=`translate(${dx*scale}px,${dy*scale}px)`;
+}
+function reset(){joy={x:0,y:0};knob.style.transform=''}
+pad.addEventListener('pointerdown',e=>{pad.setPointerCapture(e.pointerId);move(e)});
+pad.addEventListener('pointermove',e=>{if(e.buttons)move(e)});
+pad.addEventListener('pointerup',reset);
+pad.addEventListener('pointercancel',reset);
+for(const [id,v] of [['up',1],['down',-1]]){
+  const button=document.getElementById(id);
+  button.addEventListener('pointerdown',e=>{button.setPointerCapture(e.pointerId);vertical=v});
+  button.addEventListener('pointerup',()=>vertical=0);
+  button.addEventListener('pointercancel',()=>vertical=0);
+}
+const clock=new THREE.Clock();
+function tick(){
+  requestAnimationFrame(tick);
+  const dt=Math.min(clock.getDelta(),.05);
+  const turn=Number(!!keys.d||!!keys.arrowright)-Number(!!keys.a||!!keys.arrowleft)+joy.x;
+  flyer.rotation.y-=turn*dt*1.3;
+  const forward=Number(!!keys.w||!!keys.arrowup)-Number(!!keys.s||!!keys.arrowdown)-joy.y;
+  const speed=forward*42*dt;
+  flyer.position.x-=Math.sin(flyer.rotation.y)*speed;
+  flyer.position.z-=Math.cos(flyer.rotation.y)*speed;
+  flyer.position.y+=(Number(!!keys.e)-Number(!!keys.q)+vertical)*30*dt;
+  flyer.position.y=THREE.MathUtils.clamp(flyer.position.y,8,170);
+  const offset=new THREE.Vector3(0,15,34).applyAxisAngle(new THREE.Vector3(0,1,0),flyer.rotation.y);
+  camera.position.lerp(flyer.position.clone().add(offset),Math.min(1,dt*5));
+  camera.lookAt(flyer.position.clone().add(new THREE.Vector3(0,2,0)));
+  renderer.render(scene,camera);
+}
+tick();
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+</script>
+</body>
+</html>
